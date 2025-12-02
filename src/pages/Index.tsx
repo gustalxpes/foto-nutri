@@ -1,14 +1,21 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useNutritionStore } from '@/store/nutritionStore';
 
 const Index = () => {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
-  );
+  const navigate = useNavigate();
+  const currentUser = useNutritionStore((state) => state.currentUser);
+
+  useEffect(() => {
+    // Redirect based on auth state
+    if (currentUser) {
+      navigate('/home', { replace: true });
+    } else {
+      navigate('/', { replace: true });
+    }
+  }, [currentUser, navigate]);
+
+  return null;
 };
 
 export default Index;
