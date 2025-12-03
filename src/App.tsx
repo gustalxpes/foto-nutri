@@ -13,15 +13,24 @@ import MealDetail from "./pages/MealDetail";
 import Profile from "./pages/Profile";
 import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
-import { useNutritionStore } from "./store/nutritionStore";
+import { useAuth } from "./hooks/useAuth";
+import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
 // Protected Route component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const currentUser = useNutritionStore((state) => state.currentUser);
+  const { user, loading } = useAuth();
   
-  if (!currentUser) {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+  
+  if (!user) {
     return <Navigate to="/" replace />;
   }
   
