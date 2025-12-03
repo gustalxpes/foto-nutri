@@ -5,35 +5,48 @@ import { Check, AlertTriangle, Minus, Plus, X, Edit2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useNutritionStore } from '@/store/nutritionStore';
+import { supabase } from '@/integrations/supabase/client';
 import { Meal, mealTypeLabels } from '@/types/nutrition';
 import { toast } from 'sonner';
 import sampleMealImage from '@/assets/sample-meal.jpg';
 
-// Mock AI analysis result
-const mockAnalysis = {
-  foods: ['Arroz branco', 'Feijão preto', 'Frango grelhado', 'Salada verde'],
+interface AnalysisResult {
+  foods: string[];
   nutrition: {
-    calories: 520,
-    carbs: 65,
-    protein: 35,
-    fat: 12,
-    fiber: 8,
+    calories: number;
+    carbs: number;
+    protein: number;
+    fat: number;
+    fiber: number;
+  };
+  confidence: number;
+}
+
+// Fallback for when no analysis result is provided
+const defaultAnalysis: AnalysisResult = {
+  foods: ['Alimento não identificado'],
+  nutrition: {
+    calories: 0,
+    carbs: 0,
+    protein: 0,
+    fat: 0,
+    fiber: 0,
   },
-  confidence: 0.85,
+  confidence: 0,
 };
 
 export const Analysis = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { addMeal, currentUser } = useNutritionStore();
   
   const imageUrl = location.state?.imageUrl || sampleMealImage;
+  const analysisResult: AnalysisResult = location.state?.analysisResult || defaultAnalysis;
   
   const [servings, setServings] = useState(1);
   const [mealType, setMealType] = useState<Meal['mealType']>('almoço');
   const [isEditing, setIsEditing] = useState(false);
-  const [editedNutrition, setEditedNutrition] = useState(mockAnalysis.nutrition);
+  const [editedNutrition, setEditedNutrition] = useState(analysisResult.nutrition);
+  const [isSaving, setIsSaving] = useState(false);
 
   const adjustedNutrition = {
     calories: Math.round(editedNutrition.calories * servings),
@@ -43,26 +56,47 @@ export const Analysis = () => {
     fiber: Math.round(editedNutrition.fiber * servings),
   };
 
-  const handleSave = () => {
-    if (!currentUser) {
-      toast.error('Você precisa estar logado para salvar refeições');
-      navigate('/login');
-      return;
+  const handleSave = async () => {
+    setIsSaving(true);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast.error('Você precisa estar logado para salvar refeições');
+        navigate('/login');
+        return;
+      }
+
+      const { error } = await supabase.from('meals').insert({
+        user_id: user.id,
+        datetime: new Date().toISOString(),
+        meal_type: mealType,
+        image_url: imageUrl,
+        servings,
+        foods: analysisResult.foods,
+        calories: adjustedNutrition.calories,
+        carbs: adjustedNutrition.carbs,
+        protein: adjustedNutrition.protein,
+        fat: adjustedNutrition.fat,
+        fiber: adjustedNutrition.fiber,
+        confidence: analysisResult.confidence,
+      });
+
+      if (error) {
+        console.error('Erro ao salvar:', error);
+        toast.error('Erro ao salvar refeição. Tente novamente.');
+        return;
+      }
+
+      toast.success('Refeição registrada com sucesso!');
+      navigate('/home');
+    } catch (err) {
+      console.error('Erro:', err);
+      toast.error('Erro ao salvar refeição');
+    } finally {
+      setIsSaving(false);
     }
-
-    addMeal({
-      userId: currentUser.id,
-      datetime: new Date(),
-      mealType,
-      imageUrl,
-      servings,
-      nutrition: editedNutrition,
-      foods: mockAnalysis.foods,
-      confidence: mockAnalysis.confidence,
-    });
-
-    toast.success('Refeição registrada com sucesso!');
-    navigate('/home');
   };
 
   const mealTypes: Meal['mealType'][] = ['café', 'almoço', 'jantar', 'lanche', 'outro'];
@@ -90,7 +124,7 @@ export const Analysis = () => {
             alt="Refeição analisada"
             className="absolute inset-0 w-full h-full object-cover"
           />
-          {mockAnalysis.confidence < 0.8 && (
+          {analysisResult.confidence < 0.8 && (
             <div className="absolute top-3 left-3 bg-warning/90 text-warning-foreground px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-medium">
               <AlertTriangle className="w-4 h-4" />
               Estimativa imprecisa
@@ -107,9 +141,9 @@ export const Analysis = () => {
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-3">Alimentos identificados</h3>
           <div className="flex flex-wrap gap-2">
-            {mockAnalysis.foods.map((food) => (
+            {analysisResult.foods.map((food, index) => (
               <span
-                key={food}
+                key={`${food}-${index}`}
                 className="px-3 py-1.5 bg-accent text-accent-foreground rounded-full text-sm font-medium"
               >
                 {food}
@@ -275,9 +309,15 @@ export const Analysis = () => {
           transition={{ delay: 0.3 }}
           className="space-y-3"
         >
-          <Button variant="hero" size="xl" className="w-full" onClick={handleSave}>
+          <Button 
+            variant="hero" 
+            size="xl" 
+            className="w-full" 
+            onClick={handleSave}
+            disabled={isSaving}
+          >
             <Check className="w-5 h-5 mr-2" />
-            Salvar Refeição
+            {isSaving ? 'Salvando...' : 'Salvar Refeição'}
           </Button>
           <Button variant="outline" size="lg" className="w-full" onClick={() => navigate('/capture')}>
             Refazer Análise

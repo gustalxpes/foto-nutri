@@ -1,22 +1,116 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Flame, TrendingUp } from 'lucide-react';
+import { Plus, Flame, TrendingUp, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ProgressRing } from '@/components/ProgressRing';
 import { MacroCard } from '@/components/MacroCard';
 import { MealCard } from '@/components/MealCard';
 import { BottomNav } from '@/components/BottomNav';
-import { useNutritionStore } from '@/store/nutritionStore';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+
+interface Profile {
+  name: string | null;
+  daily_calories_goal: number;
+  daily_carbs_goal: number;
+  daily_protein_goal: number;
+  daily_fat_goal: number;
+  daily_fiber_goal: number;
+}
+
+interface MealData {
+  id: string;
+  datetime: string;
+  meal_type: string;
+  image_url: string | null;
+  servings: number;
+  foods: string[];
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  fiber: number;
+}
 
 export const Home = () => {
   const navigate = useNavigate();
-  const { userGoals, getMealsForDate, getDailySummary, currentUser } = useNutritionStore();
-  
-  const today = new Date();
-  const todayMeals = getMealsForDate(today);
-  const summary = getDailySummary(today);
+  const { user, loading: authLoading } = useAuth();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [todayMeals, setTodayMeals] = useState<MealData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const currentCalories = summary?.totalCalories || 0;
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
+      return;
+    }
+
+    if (user) {
+      fetchData();
+    }
+  }, [user, authLoading, navigate]);
+
+  const fetchData = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch profile
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('name, daily_calories_goal, daily_carbs_goal, daily_protein_goal, daily_fat_goal, daily_fiber_goal')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (profileData) {
+        setProfile(profileData);
+      }
+
+      // Fetch today's meals
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const { data: mealsData } = await supabase
+        .from('meals')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('datetime', today.toISOString())
+        .lt('datetime', tomorrow.toISOString())
+        .order('datetime', { ascending: false });
+
+      if (mealsData) {
+        setTodayMeals(mealsData);
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate today's totals
+  const summary = todayMeals.reduce(
+    (acc, meal) => ({
+      totalCalories: acc.totalCalories + meal.calories,
+      totalCarbs: acc.totalCarbs + meal.carbs,
+      totalProtein: acc.totalProtein + meal.protein,
+      totalFat: acc.totalFat + meal.fat,
+      totalFiber: acc.totalFiber + meal.fiber,
+    }),
+    { totalCalories: 0, totalCarbs: 0, totalProtein: 0, totalFat: 0, totalFiber: 0 }
+  );
+
+  const userGoals = {
+    dailyCalories: profile?.daily_calories_goal || 2000,
+    dailyCarbs: profile?.daily_carbs_goal || 250,
+    dailyProtein: profile?.daily_protein_goal || 150,
+    dailyFat: profile?.daily_fat_goal || 65,
+    dailyFiber: profile?.daily_fiber_goal || 30,
+  };
+
+  const currentCalories = summary.totalCalories;
   const calorieProgress = (currentCalories / userGoals.dailyCalories) * 100;
   const remainingCalories = Math.max(userGoals.dailyCalories - currentCalories, 0);
 
@@ -26,6 +120,14 @@ export const Home = () => {
     if (hour < 18) return 'Boa tarde';
     return 'Boa noite';
   };
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -39,7 +141,7 @@ export const Home = () => {
           <div>
             <p className="text-sm text-muted-foreground">{greeting()},</p>
             <h1 className="text-xl font-bold font-display text-foreground">
-              {currentUser?.name || 'Usuário'}
+              {profile?.name || 'Usuário'}
             </h1>
           </div>
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -93,25 +195,25 @@ export const Home = () => {
         >
           <MacroCard
             label="Carboidratos"
-            current={summary?.totalCarbs || 0}
+            current={summary.totalCarbs}
             goal={userGoals.dailyCarbs}
             colorClass="text-macro-carbs"
           />
           <MacroCard
             label="Proteínas"
-            current={summary?.totalProtein || 0}
+            current={summary.totalProtein}
             goal={userGoals.dailyProtein}
             colorClass="text-macro-protein"
           />
           <MacroCard
             label="Gorduras"
-            current={summary?.totalFat || 0}
+            current={summary.totalFat}
             goal={userGoals.dailyFat}
             colorClass="text-macro-fat"
           />
           <MacroCard
             label="Fibras"
-            current={summary?.totalFiber || 0}
+            current={summary.totalFiber}
             goal={userGoals.dailyFiber}
             colorClass="text-macro-fiber"
           />
@@ -176,7 +278,22 @@ export const Home = () => {
             {todayMeals.slice(0, 3).map((meal) => (
               <MealCard
                 key={meal.id}
-                meal={meal}
+                meal={{
+                  id: meal.id,
+                  userId: user?.id || '',
+                  datetime: new Date(meal.datetime),
+                  mealType: meal.meal_type as any,
+                  imageUrl: meal.image_url || '',
+                  servings: meal.servings,
+                  nutrition: {
+                    calories: meal.calories,
+                    carbs: meal.carbs,
+                    protein: meal.protein,
+                    fat: meal.fat,
+                    fiber: meal.fiber,
+                  },
+                  foods: meal.foods,
+                }}
                 onClick={() => navigate(`/meal/${meal.id}`)}
               />
             ))}

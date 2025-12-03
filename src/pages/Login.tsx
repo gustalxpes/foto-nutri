@@ -1,39 +1,93 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Mail, Lock, User, Sparkles } from 'lucide-react';
-import { useNutritionStore } from '@/store/nutritionStore';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export const Login = () => {
   const navigate = useNavigate();
-  const setCurrentUser = useNutritionStore((state) => state.setCurrentUser);
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  useEffect(() => {
+    // Check if user is already logged in
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/home');
+      }
+    };
+    checkUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        navigate('/home');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      if (isLogin) {
+        // Login
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-    // Mock authentication
-    setCurrentUser({
-      id: '1',
-      name: name || email.split('@')[0],
-      email,
-    });
+        if (error) {
+          if (error.message.includes('Invalid login credentials')) {
+            toast.error('Email ou senha incorretos');
+          } else {
+            toast.error(error.message);
+          }
+          return;
+        }
 
-    toast.success(isLogin ? 'Bem-vindo de volta!' : 'Conta criada com sucesso!');
-    navigate('/home');
-    setIsLoading(false);
+        toast.success('Bem-vindo de volta!');
+      } else {
+        // Sign up
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/`,
+            data: {
+              name: name || email.split('@')[0],
+            },
+          },
+        });
+
+        if (error) {
+          if (error.message.includes('User already registered')) {
+            toast.error('Este email já está cadastrado');
+          } else {
+            toast.error(error.message);
+          }
+          return;
+        }
+
+        toast.success('Conta criada com sucesso!');
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+      toast.error('Ocorreu um erro. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
