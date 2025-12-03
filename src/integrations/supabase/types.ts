@@ -14,7 +14,99 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      meals: {
+        Row: {
+          calories: number
+          carbs: number
+          confidence: number | null
+          created_at: string
+          datetime: string
+          fat: number
+          fiber: number
+          foods: string[] | null
+          id: string
+          image_url: string | null
+          meal_type: string
+          protein: number
+          servings: number
+          user_id: string
+        }
+        Insert: {
+          calories?: number
+          carbs?: number
+          confidence?: number | null
+          created_at?: string
+          datetime?: string
+          fat?: number
+          fiber?: number
+          foods?: string[] | null
+          id?: string
+          image_url?: string | null
+          meal_type: string
+          protein?: number
+          servings?: number
+          user_id: string
+        }
+        Update: {
+          calories?: number
+          carbs?: number
+          confidence?: number | null
+          created_at?: string
+          datetime?: string
+          fat?: number
+          fiber?: number
+          foods?: string[] | null
+          id?: string
+          image_url?: string | null
+          meal_type?: string
+          protein?: number
+          servings?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          daily_calories_goal: number | null
+          daily_carbs_goal: number | null
+          daily_fat_goal: number | null
+          daily_fiber_goal: number | null
+          daily_protein_goal: number | null
+          email: string | null
+          id: string
+          name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_calories_goal?: number | null
+          daily_carbs_goal?: number | null
+          daily_fat_goal?: number | null
+          daily_fiber_goal?: number | null
+          daily_protein_goal?: number | null
+          email?: string | null
+          id?: string
+          name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_calories_goal?: number | null
+          daily_carbs_goal?: number | null
+          daily_fat_goal?: number | null
+          daily_fiber_goal?: number | null
+          daily_protein_goal?: number | null
+          email?: string | null
+          id?: string
+          name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

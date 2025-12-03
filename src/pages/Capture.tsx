@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Camera, Image as ImageIcon, X, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export const Capture = () => {
   const navigate = useNavigate();
@@ -22,7 +24,6 @@ export const Capture = () => {
   };
 
   const handleCameraCapture = () => {
-    // Create input for camera
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -41,12 +42,41 @@ export const Capture = () => {
   };
 
   const handleAnalyze = async () => {
-    setIsAnalyzing(true);
-    // Simulate AI analysis - in production this would call the AI API
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (!capturedImage) return;
     
-    // Navigate to analysis results with the image
-    navigate('/analysis', { state: { imageUrl: capturedImage } });
+    setIsAnalyzing(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-food', {
+        body: { imageBase64: capturedImage }
+      });
+
+      if (error) {
+        console.error('Erro na análise:', error);
+        toast.error('Erro ao analisar imagem. Tente novamente.');
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (data.error) {
+        toast.error(data.error);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Navigate to analysis results with the image and AI results
+      navigate('/analysis', { 
+        state: { 
+          imageUrl: capturedImage,
+          analysisResult: data
+        } 
+      });
+    } catch (err) {
+      console.error('Erro:', err);
+      toast.error('Não foi possível analisar a imagem. Tente novamente.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleRetake = () => {

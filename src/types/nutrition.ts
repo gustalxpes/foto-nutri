@@ -15,7 +15,7 @@ export interface Meal {
   servings: number;
   nutrition: NutritionData;
   foods: string[];
-  confidence: number;
+  confidence?: number;
 }
 
 export interface DailySummary {
