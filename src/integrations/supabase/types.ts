@@ -73,6 +73,7 @@ export type Database = {
           daily_fat_goal: number | null
           daily_fiber_goal: number | null
           daily_protein_goal: number | null
+          diet_days: number[] | null
           email: string | null
           id: string
           name: string | null
@@ -86,6 +87,7 @@ export type Database = {
           daily_fat_goal?: number | null
           daily_fiber_goal?: number | null
           daily_protein_goal?: number | null
+          diet_days?: number[] | null
           email?: string | null
           id?: string
           name?: string | null
@@ -99,6 +101,7 @@ export type Database = {
           daily_fat_goal?: number | null
           daily_fiber_goal?: number | null
           daily_protein_goal?: number | null
+          diet_days?: number[] | null
           email?: string | null
           id?: string
           name?: string | null

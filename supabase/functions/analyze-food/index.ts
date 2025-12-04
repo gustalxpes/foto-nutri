@@ -45,6 +45,9 @@ serve(async (req) => {
             content: `Você é um especialista em nutrição e análise de alimentos. Analise a imagem da refeição e retorne APENAS um JSON válido (sem markdown, sem explicações) com a seguinte estrutura:
 {
   "foods": ["lista de alimentos identificados em português"],
+  "food_details": [
+    {"name": "nome do alimento", "grams": número estimado de gramas}
+  ],
   "nutrition": {
     "calories": número em kcal,
     "carbs": número em gramas,
@@ -55,14 +58,18 @@ serve(async (req) => {
   "confidence": número entre 0 e 1 indicando sua confiança na análise
 }
 
-Seja preciso nas estimativas nutricionais considerando porções típicas brasileiras. Se não conseguir identificar a comida claramente, defina confidence abaixo de 0.8.`
+IMPORTANTE:
+- Estime as gramas de cada alimento baseado no tamanho visual aparente na imagem
+- Use porções típicas brasileiras como referência
+- Se não conseguir identificar a comida claramente, defina confidence abaixo de 0.8
+- Seja preciso nas estimativas nutricionais considerando as gramas estimadas`
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: 'Analise esta refeição e forneça os valores nutricionais estimados.'
+                text: 'Analise esta refeição. Identifique cada alimento, estime as gramas de cada um, e forneça os valores nutricionais totais estimados.'
               },
               {
                 type: 'image_url',
@@ -135,6 +142,14 @@ Seja preciso nas estimativas nutricionais considerando porções típicas brasil
         JSON.stringify({ error: 'Estrutura de análise inválida' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Ensure food_details exists, create from foods if missing
+    if (!analysisResult.food_details || !Array.isArray(analysisResult.food_details)) {
+      analysisResult.food_details = analysisResult.foods.map((food: string) => ({
+        name: food,
+        grams: 100 // default estimate
+      }));
     }
 
     console.log('Análise concluída com sucesso:', analysisResult);
