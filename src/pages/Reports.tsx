@@ -1,42 +1,159 @@
-import { useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus, Flame, Target } from 'lucide-react';
+import { TrendingUp, TrendingDown, Flame, Target, Loader2 } from 'lucide-react';
 import { BottomNav } from '@/components/BottomNav';
 import { ProgressRing } from '@/components/ProgressRing';
-import { useNutritionStore } from '@/store/nutritionStore';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+
+interface Profile {
+  daily_calories_goal: number;
+  daily_carbs_goal: number;
+  daily_protein_goal: number;
+  daily_fat_goal: number;
+  daily_fiber_goal: number;
+  diet_days: number[];
+}
+
+interface DayData {
+  date: Date;
+  calories: number;
+  target: number;
+  dayOfWeek: number;
+  isDietDay: boolean;
+}
+
+const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 export const Reports = () => {
-  const { meals, userGoals, dailySummaries } = useNutritionStore();
+  const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [weeklyData, setWeeklyData] = useState<DayData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Get last 7 days data
-  const weeklyData = useMemo(() => {
-    const days: { date: Date; calories: number; target: number }[] = [];
-    const today = new Date();
-
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      
-      const summary = dailySummaries.find(
-        (s) => new Date(s.date).toDateString() === date.toDateString()
-      );
-
-      days.push({
-        date,
-        calories: summary?.totalCalories || 0,
-        target: userGoals.dailyCalories,
-      });
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/');
     }
+  }, [user, authLoading, navigate]);
 
-    return days;
-  }, [dailySummaries, userGoals]);
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
 
-  // Calculate weekly totals and averages
+  const fetchData = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('daily_calories_goal, daily_carbs_goal, daily_protein_goal, daily_fat_goal, daily_fiber_goal, diet_days')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      const userProfile: Profile = {
+        daily_calories_goal: profileData?.daily_calories_goal || 2000,
+        daily_carbs_goal: profileData?.daily_carbs_goal || 250,
+        daily_protein_goal: profileData?.daily_protein_goal || 150,
+        daily_fat_goal: profileData?.daily_fat_goal || 65,
+        daily_fiber_goal: profileData?.daily_fiber_goal || 30,
+        diet_days: profileData?.diet_days || [1, 2, 3, 4, 5],
+      };
+      setProfile(userProfile);
+
+      // Fetch meals for last 7 days
+      const today = new Date();
+      const sevenDaysAgo = new Date(today);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
+      const { data: mealsData, error: mealsError } = await supabase
+        .from('meals')
+        .select('datetime, calories')
+        .eq('user_id', user.id)
+        .gte('datetime', sevenDaysAgo.toISOString())
+        .lte('datetime', new Date(today.setHours(23, 59, 59, 999)).toISOString());
+
+      if (mealsError) throw mealsError;
+
+      // Build weekly data
+      const days: DayData[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        const dayOfWeek = date.getDay();
+
+        const dayMeals = mealsData?.filter((meal) => {
+          const mealDate = new Date(meal.datetime);
+          return mealDate.toDateString() === date.toDateString();
+        }) || [];
+
+        const totalCalories = dayMeals.reduce((sum, meal) => sum + (meal.calories || 0), 0);
+
+        days.push({
+          date,
+          calories: totalCalories,
+          target: userProfile.daily_calories_goal,
+          dayOfWeek,
+          isDietDay: userProfile.diet_days.includes(dayOfWeek),
+        });
+      }
+
+      setWeeklyData(days);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Erro ao carregar relatórios');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleDietDay = async (dayOfWeek: number) => {
+    if (!user || !profile) return;
+
+    const newDietDays = profile.diet_days.includes(dayOfWeek)
+      ? profile.diet_days.filter((d) => d !== dayOfWeek)
+      : [...profile.diet_days, dayOfWeek].sort();
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ diet_days: newDietDays })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setProfile({ ...profile, diet_days: newDietDays });
+      setWeeklyData((prev) =>
+        prev.map((day) => ({
+          ...day,
+          isDietDay: newDietDays.includes(day.dayOfWeek),
+        }))
+      );
+      toast.success('Dias de dieta atualizados');
+    } catch (error) {
+      console.error('Erro ao atualizar dias de dieta:', error);
+      toast.error('Erro ao atualizar');
+    }
+  };
+
   const weeklyStats = useMemo(() => {
-    const totalCalories = weeklyData.reduce((sum, day) => sum + day.calories, 0);
-    const daysWithData = weeklyData.filter((d) => d.calories > 0).length;
+    if (!profile) return null;
+
+    const dietDaysData = weeklyData.filter((d) => d.isDietDay);
+    const totalCalories = dietDaysData.reduce((sum, day) => sum + day.calories, 0);
+    const daysWithData = dietDaysData.filter((d) => d.calories > 0).length;
     const avgCalories = daysWithData > 0 ? totalCalories / daysWithData : 0;
-    const weeklyTarget = userGoals.dailyCalories * 7;
+    const weeklyTarget = profile.daily_calories_goal * dietDaysData.length;
     const onTrack = totalCalories <= weeklyTarget;
 
     return {
@@ -45,17 +162,29 @@ export const Reports = () => {
       weeklyTarget,
       onTrack,
       daysTracked: daysWithData,
+      totalDietDays: dietDaysData.length,
     };
-  }, [weeklyData, userGoals]);
+  }, [weeklyData, profile]);
 
-  const maxCalories = Math.max(
-    ...weeklyData.map((d) => d.calories),
-    userGoals.dailyCalories
-  );
+  const maxCalories = useMemo(() => {
+    return Math.max(...weeklyData.map((d) => d.calories), profile?.daily_calories_goal || 2000);
+  }, [weeklyData, profile]);
 
   const getDayLabel = (date: Date) => {
     return date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
   };
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!profile || !weeklyStats) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -66,10 +195,40 @@ export const Reports = () => {
       </header>
 
       <div className="px-6 py-4">
+        {/* Diet Days Selection */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-card rounded-2xl p-6 shadow-card mb-6"
+        >
+          <h2 className="text-lg font-semibold font-display text-foreground mb-4">
+            Dias de Dieta
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Selecione os dias em que você quer manter a dieta
+          </p>
+          <div className="flex justify-between gap-2">
+            {WEEKDAY_LABELS.map((label, index) => (
+              <button
+                key={index}
+                onClick={() => toggleDietDay(index)}
+                className={`flex-1 py-2 px-1 rounded-lg text-sm font-medium transition-colors ${
+                  profile.diet_days.includes(index)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+
         {/* Weekly Summary */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
           className="bg-card rounded-2xl p-6 shadow-card mb-6"
         >
           <h2 className="text-lg font-semibold font-display text-foreground mb-4">
@@ -85,7 +244,9 @@ export const Reports = () => {
             >
               <div className="text-center">
                 <Target className="w-5 h-5 text-primary mx-auto mb-1" />
-                <span className="text-xs text-muted-foreground">{weeklyStats.daysTracked}/7</span>
+                <span className="text-xs text-muted-foreground">
+                  {weeklyStats.daysTracked}/{weeklyStats.totalDietDays}
+                </span>
               </div>
             </ProgressRing>
 
@@ -117,7 +278,7 @@ export const Reports = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.2 }}
           className="bg-card rounded-2xl p-6 shadow-card mb-6"
         >
           <h2 className="text-lg font-semibold font-display text-foreground mb-4">
@@ -128,7 +289,7 @@ export const Reports = () => {
             {weeklyData.map((day, index) => {
               const height = maxCalories > 0 ? (day.calories / maxCalories) * 100 : 0;
               const isToday = index === weeklyData.length - 1;
-              const isOverTarget = day.calories > userGoals.dailyCalories;
+              const isOverTarget = day.calories > profile.daily_calories_goal;
 
               return (
                 <div key={index} className="flex-1 flex flex-col items-center gap-2">
@@ -140,7 +301,9 @@ export const Reports = () => {
                     animate={{ height: `${Math.max(height, 4)}%` }}
                     transition={{ delay: index * 0.1, duration: 0.5 }}
                     className={`w-full rounded-t-lg ${
-                      day.calories === 0
+                      !day.isDietDay
+                        ? 'bg-muted/50'
+                        : day.calories === 0
                         ? 'bg-muted'
                         : isOverTarget
                         ? 'bg-destructive/80'
@@ -149,7 +312,11 @@ export const Reports = () => {
                         : 'bg-primary/60'
                     }`}
                   />
-                  <span className={`text-xs capitalize ${isToday ? 'font-semibold text-primary' : 'text-muted-foreground'}`}>
+                  <span
+                    className={`text-xs capitalize ${
+                      isToday ? 'font-semibold text-primary' : day.isDietDay ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
                     {getDayLabel(day.date)}
                   </span>
                 </div>
@@ -157,12 +324,20 @@ export const Reports = () => {
             })}
           </div>
 
-          {/* Target line indicator */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-primary/60" />
-            <span>Dentro da meta</span>
-            <div className="w-3 h-3 rounded bg-destructive/80 ml-4" />
-            <span>Acima da meta</span>
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-primary/60" />
+              <span>Dentro da meta</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-destructive/80" />
+              <span>Acima da meta</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-muted/50" />
+              <span>Dia livre</span>
+            </div>
           </div>
         </motion.div>
 
@@ -170,7 +345,7 @@ export const Reports = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.3 }}
           className="grid grid-cols-2 gap-4"
         >
           <div className="bg-card rounded-xl p-4 shadow-card">
@@ -189,7 +364,7 @@ export const Reports = () => {
             </div>
             <p className="text-sm text-muted-foreground mb-1">Meta diária</p>
             <p className="text-xl font-bold font-display text-foreground">
-              {userGoals.dailyCalories} kcal
+              {profile.daily_calories_goal} kcal
             </p>
           </div>
         </motion.div>
@@ -198,7 +373,7 @@ export const Reports = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.4 }}
           className="bg-accent rounded-2xl p-4 mt-6"
         >
           <p className="text-sm text-accent-foreground">

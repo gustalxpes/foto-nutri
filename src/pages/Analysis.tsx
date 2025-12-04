@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Check, AlertTriangle, Minus, Plus, X, Edit2 } from 'lucide-react';
+import { Check, AlertTriangle, Minus, Plus, X, Edit2, Scale } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +10,14 @@ import { Meal, mealTypeLabels } from '@/types/nutrition';
 import { toast } from 'sonner';
 import sampleMealImage from '@/assets/sample-meal.jpg';
 
+interface FoodDetail {
+  name: string;
+  grams: number;
+}
+
 interface AnalysisResult {
   foods: string[];
+  food_details?: FoodDetail[];
   nutrition: {
     calories: number;
     carbs: number;
@@ -25,6 +31,7 @@ interface AnalysisResult {
 // Fallback for when no analysis result is provided
 const defaultAnalysis: AnalysisResult = {
   foods: ['Alimento não identificado'],
+  food_details: [{ name: 'Alimento não identificado', grams: 0 }],
   nutrition: {
     calories: 0,
     carbs: 0,
@@ -42,10 +49,16 @@ export const Analysis = () => {
   const imageUrl = location.state?.imageUrl || sampleMealImage;
   const analysisResult: AnalysisResult = location.state?.analysisResult || defaultAnalysis;
   
+  // Initialize food details from analysis or create from foods array
+  const initialFoodDetails: FoodDetail[] = analysisResult.food_details || 
+    analysisResult.foods.map((food) => ({ name: food, grams: 100 }));
+  
   const [servings, setServings] = useState(1);
   const [mealType, setMealType] = useState<Meal['mealType']>('almoço');
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingFoods, setIsEditingFoods] = useState(false);
   const [editedNutrition, setEditedNutrition] = useState(analysisResult.nutrition);
+  const [foodDetails, setFoodDetails] = useState<FoodDetail[]>(initialFoodDetails);
   const [isSaving, setIsSaving] = useState(false);
 
   const adjustedNutrition = {
@@ -54,6 +67,12 @@ export const Analysis = () => {
     protein: Math.round(editedNutrition.protein * servings),
     fat: Math.round(editedNutrition.fat * servings),
     fiber: Math.round(editedNutrition.fiber * servings),
+  };
+
+  const updateFoodGrams = (index: number, grams: number) => {
+    const newFoodDetails = [...foodDetails];
+    newFoodDetails[index] = { ...newFoodDetails[index], grams };
+    setFoodDetails(newFoodDetails);
   };
 
   const handleSave = async () => {
@@ -68,13 +87,15 @@ export const Analysis = () => {
         return;
       }
 
+      const foodNames = foodDetails.map((f) => `${f.name} (${f.grams}g)`);
+
       const { error } = await supabase.from('meals').insert({
         user_id: user.id,
         datetime: new Date().toISOString(),
         meal_type: mealType,
         image_url: imageUrl,
         servings,
-        foods: analysisResult.foods,
+        foods: foodNames,
         calories: adjustedNutrition.calories,
         carbs: adjustedNutrition.carbs,
         protein: adjustedNutrition.protein,
@@ -132,24 +153,59 @@ export const Analysis = () => {
           )}
         </motion.div>
 
-        {/* Foods Identified */}
+        {/* Foods Identified with Grams */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="bg-card rounded-xl p-4 shadow-card mb-4"
         >
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">Alimentos identificados</h3>
-          <div className="flex flex-wrap gap-2">
-            {analysisResult.foods.map((food, index) => (
-              <span
-                key={`${food}-${index}`}
-                className="px-3 py-1.5 bg-accent text-accent-foreground rounded-full text-sm font-medium"
-              >
-                {food}
-              </span>
-            ))}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Scale className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-medium text-muted-foreground">Alimentos identificados</h3>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsEditingFoods(!isEditingFoods)}
+              className="text-primary"
+            >
+              <Edit2 className="w-4 h-4 mr-1" />
+              {isEditingFoods ? 'Concluir' : 'Editar'}
+            </Button>
           </div>
+
+          {isEditingFoods ? (
+            <div className="space-y-3">
+              {foodDetails.map((food, index) => (
+                <div key={index} className="flex items-center gap-3">
+                  <span className="flex-1 text-sm text-foreground">{food.name}</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={food.grams}
+                      onChange={(e) => updateFoodGrams(index, Number(e.target.value))}
+                      className="w-20 h-8 text-center"
+                    />
+                    <span className="text-sm text-muted-foreground">g</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {foodDetails.map((food, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between px-3 py-2 bg-accent rounded-lg"
+                >
+                  <span className="text-sm font-medium text-accent-foreground">{food.name}</span>
+                  <span className="text-sm text-muted-foreground">{food.grams}g</span>
+                </div>
+              ))}
+            </div>
+          )}
         </motion.div>
 
         {/* Meal Type Selection */}
