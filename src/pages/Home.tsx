@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 interface Profile {
   name: string | null;
+  email: string | null;
   daily_calories_goal: number;
   daily_carbs_goal: number;
   daily_protein_goal: number;
@@ -58,7 +59,7 @@ export const Home = () => {
       // Fetch profile
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('name, daily_calories_goal, daily_carbs_goal, daily_protein_goal, daily_fat_goal, daily_fiber_goal')
+        .select('name, email, daily_calories_goal, daily_carbs_goal, daily_protein_goal, daily_fat_goal, daily_fiber_goal')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -143,6 +144,9 @@ export const Home = () => {
             <h1 className="text-xl font-bold font-display text-foreground">
               {profile?.name || 'Usuário'}
             </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {profile?.email || user?.email}
+            </p>
           </div>
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
             <span className="text-lg">👋</span>
