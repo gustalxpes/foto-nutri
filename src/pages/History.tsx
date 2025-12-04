@@ -1,18 +1,77 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MealCard } from '@/components/MealCard';
 import { BottomNav } from '@/components/BottomNav';
-import { useNutritionStore } from '@/store/nutritionStore';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { mealTypeLabels, Meal } from '@/types/nutrition';
+
+interface MealData {
+  id: string;
+  datetime: string;
+  meal_type: string;
+  image_url: string | null;
+  servings: number;
+  foods: string[];
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  fiber: number;
+}
 
 export const History = () => {
   const navigate = useNavigate();
-  const { meals } = useNutritionStore();
+  const { user, loading: authLoading } = useAuth();
+  const [meals, setMeals] = useState<MealData[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filter, setFilter] = useState<Meal['mealType'] | 'todos'>('todos');
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
+      return;
+    }
+
+    if (user) {
+      fetchMeals();
+    }
+  }, [user, authLoading, navigate, selectedDate]);
+
+  const fetchMeals = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const startOfDay = new Date(selectedDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(selectedDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const { data, error } = await supabase
+        .from('meals')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('datetime', startOfDay.toISOString())
+        .lte('datetime', endOfDay.toISOString())
+        .order('datetime', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching meals:', error);
+        return;
+      }
+
+      setMeals(data || []);
+    } catch (err) {
+      console.error('Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('pt-BR', {
@@ -27,14 +86,11 @@ export const History = () => {
   };
 
   const filteredMeals = useMemo(() => {
-    return meals
-      .filter((meal) => {
-        const matchesDate = isSameDay(new Date(meal.datetime), selectedDate);
-        const matchesFilter = filter === 'todos' || meal.mealType === filter;
-        return matchesDate && matchesFilter;
-      })
-      .sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
-  }, [meals, selectedDate, filter]);
+    return meals.filter((meal) => {
+      const matchesFilter = filter === 'todos' || meal.meal_type === filter;
+      return matchesFilter;
+    });
+  }, [meals, filter]);
 
   const navigateDay = (direction: 'prev' | 'next') => {
     const newDate = new Date(selectedDate);
@@ -45,6 +101,14 @@ export const History = () => {
   const isToday = isSameDay(selectedDate, new Date());
 
   const filterOptions: (Meal['mealType'] | 'todos')[] = ['todos', 'café', 'almoço', 'jantar', 'lanche'];
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -112,7 +176,11 @@ export const History = () => {
 
       {/* Meals List */}
       <section className="px-6">
-        {filteredMeals.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : filteredMeals.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -138,7 +206,22 @@ export const History = () => {
                 transition={{ delay: index * 0.05 }}
               >
                 <MealCard
-                  meal={meal}
+                  meal={{
+                    id: meal.id,
+                    userId: user?.id || '',
+                    datetime: new Date(meal.datetime),
+                    mealType: meal.meal_type as Meal['mealType'],
+                    imageUrl: meal.image_url || '',
+                    servings: meal.servings,
+                    nutrition: {
+                      calories: meal.calories,
+                      carbs: meal.carbs,
+                      protein: meal.protein,
+                      fat: meal.fat,
+                      fiber: meal.fiber,
+                    },
+                    foods: meal.foods,
+                  }}
                   onClick={() => navigate(`/meal/${meal.id}`)}
                 />
               </motion.div>

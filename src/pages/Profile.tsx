@@ -1,30 +1,144 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { User, Target, LogOut, ChevronRight, Save } from 'lucide-react';
+import { User, Target, LogOut, ChevronRight, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BottomNav } from '@/components/BottomNav';
-import { useNutritionStore } from '@/store/nutritionStore';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+interface ProfileData {
+  name: string | null;
+  email: string | null;
+  daily_calories_goal: number | null;
+  daily_carbs_goal: number | null;
+  daily_protein_goal: number | null;
+  daily_fat_goal: number | null;
+  daily_fiber_goal: number | null;
+}
 
 export const Profile = () => {
   const navigate = useNavigate();
-  const { currentUser, userGoals, setUserGoals, setCurrentUser } = useNutritionStore();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isEditingGoals, setIsEditingGoals] = useState(false);
-  const [editedGoals, setEditedGoals] = useState(userGoals);
+  const [saving, setSaving] = useState(false);
+  const [editedGoals, setEditedGoals] = useState({
+    dailyCalories: 2000,
+    dailyCarbs: 250,
+    dailyProtein: 150,
+    dailyFat: 65,
+    dailyFiber: 30,
+  });
 
-  const handleSaveGoals = () => {
-    setUserGoals(editedGoals);
-    setIsEditingGoals(false);
-    toast.success('Metas atualizadas com sucesso!');
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
+      return;
+    }
+
+    if (user) {
+      fetchProfile();
+    }
+  }, [user, authLoading, navigate]);
+
+  const fetchProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, email, daily_calories_goal, daily_carbs_goal, daily_protein_goal, daily_fat_goal, daily_fiber_goal')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching profile:', error);
+        return;
+      }
+
+      if (data) {
+        setProfile(data);
+        setEditedGoals({
+          dailyCalories: data.daily_calories_goal || 2000,
+          dailyCarbs: data.daily_carbs_goal || 250,
+          dailyProtein: data.daily_protein_goal || 150,
+          dailyFat: data.daily_fat_goal || 65,
+          dailyFiber: data.daily_fiber_goal || 30,
+        });
+      }
+    } catch (err) {
+      console.error('Error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
+  const handleSaveGoals = async () => {
+    if (!user) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          daily_calories_goal: editedGoals.dailyCalories,
+          daily_carbs_goal: editedGoals.dailyCarbs,
+          daily_protein_goal: editedGoals.dailyProtein,
+          daily_fat_goal: editedGoals.dailyFat,
+          daily_fiber_goal: editedGoals.dailyFiber,
+        })
+        .eq('user_id', user.id);
+
+      if (error) {
+        toast.error('Erro ao salvar metas');
+        console.error('Error saving goals:', error);
+        return;
+      }
+
+      setProfile((prev) => prev ? {
+        ...prev,
+        daily_calories_goal: editedGoals.dailyCalories,
+        daily_carbs_goal: editedGoals.dailyCarbs,
+        daily_protein_goal: editedGoals.dailyProtein,
+        daily_fat_goal: editedGoals.dailyFat,
+        daily_fiber_goal: editedGoals.dailyFiber,
+      } : null);
+      
+      setIsEditingGoals(false);
+      toast.success('Metas atualizadas com sucesso!');
+    } catch (err) {
+      console.error('Error:', err);
+      toast.error('Erro ao salvar metas');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut();
     toast.success('Você saiu da sua conta');
     navigate('/');
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const userGoals = {
+    dailyCalories: profile?.daily_calories_goal || 2000,
+    dailyCarbs: profile?.daily_carbs_goal || 250,
+    dailyProtein: profile?.daily_protein_goal || 150,
+    dailyFat: profile?.daily_fat_goal || 65,
+    dailyFiber: profile?.daily_fiber_goal || 30,
   };
 
   return (
@@ -45,10 +159,10 @@ export const Profile = () => {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-foreground">
-                {currentUser?.name || 'Usuário'}
+                {profile?.name || 'Usuário'}
               </h2>
               <p className="text-sm text-muted-foreground">
-                {currentUser?.email || 'usuario@email.com'}
+                {profile?.email || user?.email || 'usuario@email.com'}
               </p>
             </div>
           </div>
@@ -138,8 +252,17 @@ export const Profile = () => {
                   />
                 </div>
               </div>
-              <Button variant="hero" className="w-full" onClick={handleSaveGoals}>
-                <Save className="w-4 h-4 mr-2" />
+              <Button 
+                variant="hero" 
+                className="w-full" 
+                onClick={handleSaveGoals}
+                disabled={saving}
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4 mr-2" />
+                )}
                 Salvar Metas
               </Button>
             </div>
