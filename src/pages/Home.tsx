@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Flame, TrendingUp, Loader2, Settings } from 'lucide-react';
+import { Plus, Flame, TrendingUp, Loader2, Settings, Sun, Moon } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ProgressRing } from '@/components/ProgressRing';
@@ -39,6 +40,7 @@ interface MealData {
 export const Home = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayMeals, setTodayMeals] = useState<MealData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -218,9 +220,16 @@ export const Home = () => {
               {profile?.email || user?.email}
             </p>
           </div>
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="text-lg">👋</span>
-          </div>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition-colors"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-5 h-5 text-primary" />
+            ) : (
+              <Moon className="w-5 h-5 text-primary" />
+            )}
+          </button>
         </motion.div>
 
         {/* Calorie Progress */}
