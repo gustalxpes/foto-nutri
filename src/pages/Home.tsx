@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Flame, TrendingUp, Loader2 } from 'lucide-react';
+import { Plus, Flame, TrendingUp, Loader2, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ProgressRing } from '@/components/ProgressRing';
 import { MacroCard } from '@/components/MacroCard';
 import { MealCard } from '@/components/MealCard';
 import { BottomNav } from '@/components/BottomNav';
+import { GoalsEditModal } from '@/components/GoalsEditModal';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
 
 interface Profile {
   name: string | null;
@@ -40,6 +42,7 @@ export const Home = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayMeals, setTodayMeals] = useState<MealData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showGoalsModal, setShowGoalsModal] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -49,6 +52,45 @@ export const Home = () => {
 
     if (user) {
       fetchData();
+
+      // Real-time subscription for meals
+      const mealsChannel = supabase
+        .channel('home-meals')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'meals',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchData();
+          }
+        )
+        .subscribe();
+
+      // Real-time subscription for profile
+      const profileChannel = supabase
+        .channel('home-profile')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'profiles',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(mealsChannel);
+        supabase.removeChannel(profileChannel);
+      };
     }
   }, [user, authLoading, navigate]);
 
@@ -89,6 +131,34 @@ export const Home = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveGoals = async (goals: {
+    dailyCalories: number;
+    dailyCarbs: number;
+    dailyProtein: number;
+    dailyFat: number;
+    dailyFiber: number;
+  }) => {
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        daily_calories_goal: goals.dailyCalories,
+        daily_carbs_goal: goals.dailyCarbs,
+        daily_protein_goal: goals.dailyProtein,
+        daily_fat_goal: goals.dailyFat,
+        daily_fiber_goal: goals.dailyFiber,
+      })
+      .eq('user_id', user.id);
+
+    if (error) {
+      toast.error('Erro ao salvar metas');
+      throw error;
+    }
+
+    toast.success('Metas atualizadas');
   };
 
   // Calculate today's totals
@@ -189,8 +259,18 @@ export const Home = () => {
         </motion.div>
       </header>
 
-      {/* Macros */}
+        {/* Macros */}
       <section className="px-6 -mt-2">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-muted-foreground">Macronutrientes</h2>
+          <button
+            onClick={() => setShowGoalsModal(true)}
+            className="flex items-center gap-1 text-xs text-primary font-medium hover:underline"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            Editar metas
+          </button>
+        </div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -306,6 +386,13 @@ export const Home = () => {
       </section>
 
       <BottomNav />
+
+      <GoalsEditModal
+        isOpen={showGoalsModal}
+        onClose={() => setShowGoalsModal(false)}
+        goals={userGoals}
+        onSave={handleSaveGoals}
+      />
     </div>
   );
 };
