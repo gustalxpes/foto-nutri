@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, ReferenceLine, Tooltip } from 'recharts';
 
 interface Profile {
   daily_calories_goal: number;
@@ -43,6 +44,45 @@ export const Reports = () => {
   useEffect(() => {
     if (user) {
       fetchData();
+
+      // Real-time subscription for meals
+      const mealsChannel = supabase
+        .channel('reports-meals')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'meals',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchData();
+          }
+        )
+        .subscribe();
+
+      // Real-time subscription for profile
+      const profileChannel = supabase
+        .channel('reports-profile')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'profiles',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(mealsChannel);
+        supabase.removeChannel(profileChannel);
+      };
     }
   }, [user]);
 
@@ -166,10 +206,6 @@ export const Reports = () => {
     };
   }, [weeklyData, profile]);
 
-  const maxCalories = useMemo(() => {
-    return Math.max(...weeklyData.map((d) => d.calories), profile?.daily_calories_goal || 2000);
-  }, [weeklyData, profile]);
-
   const getDayLabel = (date: Date) => {
     return date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
   };
@@ -285,43 +321,74 @@ export const Reports = () => {
             Últimos 7 dias
           </h2>
 
-          <div className="flex items-end justify-between gap-2 h-40 mb-4">
-            {weeklyData.map((day, index) => {
-              const height = maxCalories > 0 ? (day.calories / maxCalories) * 100 : 0;
-              const isToday = index === weeklyData.length - 1;
-              const isOverTarget = day.calories > profile.daily_calories_goal;
-
-              return (
-                <div key={index} className="flex-1 flex flex-col items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {day.calories > 0 ? Math.round(day.calories) : '-'}
-                  </span>
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: `${Math.max(height, 4)}%` }}
-                    transition={{ delay: index * 0.1, duration: 0.5 }}
-                    className={`w-full rounded-t-lg ${
-                      !day.isDietDay
-                        ? 'bg-muted/50'
-                        : day.calories === 0
-                        ? 'bg-muted'
-                        : isOverTarget
-                        ? 'bg-destructive/80'
-                        : isToday
-                        ? 'gradient-primary'
-                        : 'bg-primary/60'
-                    }`}
-                  />
-                  <span
-                    className={`text-xs capitalize ${
-                      isToday ? 'font-semibold text-primary' : day.isDietDay ? 'text-foreground' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {getDayLabel(day.date)}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="h-48 mb-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={weeklyData.map((day) => ({
+                  name: getDayLabel(day.date),
+                  calories: day.calories,
+                  target: profile.daily_calories_goal,
+                  isDietDay: day.isDietDay,
+                  isOverTarget: day.calories > profile.daily_calories_goal,
+                  isToday: day.date.toDateString() === new Date().toDateString(),
+                }))}
+                margin={{ top: 20, right: 5, left: 5, bottom: 5 }}
+              >
+                <XAxis 
+                  dataKey="name" 
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis hide />
+                <Tooltip
+                  formatter={(value: number) => [`${Math.round(value)} kcal`, 'Calorias']}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                  }}
+                  labelStyle={{ color: 'hsl(var(--foreground))' }}
+                />
+                <ReferenceLine 
+                  y={profile.daily_calories_goal} 
+                  stroke="hsl(var(--muted-foreground))" 
+                  strokeDasharray="3 3"
+                  label={{ 
+                    value: `Meta: ${profile.daily_calories_goal}`, 
+                    position: 'top',
+                    fontSize: 10,
+                    fill: 'hsl(var(--muted-foreground))'
+                  }}
+                />
+                <Bar 
+                  dataKey="calories" 
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={40}
+                >
+                  {weeklyData.map((day, index) => {
+                    const isOverTarget = day.calories > profile.daily_calories_goal;
+                    const isToday = day.date.toDateString() === new Date().toDateString();
+                    
+                    let fill = 'hsl(var(--muted))';
+                    if (!day.isDietDay) {
+                      fill = 'hsl(var(--muted) / 0.5)';
+                    } else if (day.calories === 0) {
+                      fill = 'hsl(var(--muted))';
+                    } else if (isOverTarget) {
+                      fill = 'hsl(var(--destructive) / 0.8)';
+                    } else if (isToday) {
+                      fill = 'hsl(var(--primary))';
+                    } else {
+                      fill = 'hsl(var(--primary) / 0.6)';
+                    }
+                    
+                    return <Cell key={`cell-${index}`} fill={fill} />;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
 
           {/* Legend */}
