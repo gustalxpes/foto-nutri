@@ -1,17 +1,65 @@
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Trash2, Clock, Flame } from 'lucide-react';
+import { ArrowLeft, Trash2, Clock, Flame, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useNutritionStore } from '@/store/nutritionStore';
 import { mealTypeLabels } from '@/types/nutrition';
 import { toast } from 'sonner';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+
+interface MealData {
+  id: string;
+  datetime: string;
+  meal_type: string;
+  image_url: string | null;
+  servings: number;
+  foods: string[] | null;
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  fiber: number;
+  confidence: number | null;
+}
 
 export const MealDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { meals, deleteMeal } = useNutritionStore();
+  const [meal, setMeal] = useState<MealData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const meal = meals.find((m) => m.id === id);
+  useEffect(() => {
+    const fetchMeal = async () => {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('meals')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching meal:', error);
+        toast.error('Erro ao carregar refeição');
+      }
+
+      setMeal(data);
+      setLoading(false);
+    };
+
+    fetchMeal();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!meal) {
     return (
@@ -26,13 +74,22 @@ export const MealDetail = () => {
     );
   }
 
-  const handleDelete = () => {
-    deleteMeal(meal.id);
+  const handleDelete = async () => {
+    const { error } = await supabase
+      .from('meals')
+      .delete()
+      .eq('id', meal.id);
+
+    if (error) {
+      toast.error('Erro ao remover refeição');
+      return;
+    }
+
     toast.success('Refeição removida');
     navigate(-1);
   };
 
-  const totalCalories = Math.round(meal.nutrition.calories * meal.servings);
+  const totalCalories = Math.round(meal.calories * meal.servings);
   const datetime = new Date(meal.datetime);
 
   return (
@@ -40,7 +97,7 @@ export const MealDetail = () => {
       {/* Header with Image */}
       <div className="relative">
         <img
-          src={meal.imageUrl}
+          src={meal.image_url || '/placeholder.svg'}
           alt="Refeição"
           className="w-full h-64 object-cover"
         />
@@ -73,7 +130,7 @@ export const MealDetail = () => {
         >
           <div className="flex items-center gap-2 mb-3">
             <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-sm font-medium">
-              {mealTypeLabels[meal.mealType]}
+              {mealTypeLabels[meal.meal_type as keyof typeof mealTypeLabels]}
             </span>
             {meal.confidence < 0.8 && (
               <span className="px-3 py-1 bg-warning/20 text-warning rounded-full text-xs font-medium">
@@ -121,25 +178,25 @@ export const MealDetail = () => {
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-muted rounded-xl p-4 text-center">
               <span className="text-2xl font-bold text-macro-carbs">
-                {Math.round(meal.nutrition.carbs * meal.servings)}g
+                {Math.round(meal.carbs * meal.servings)}g
               </span>
               <p className="text-sm text-muted-foreground">Carboidratos</p>
             </div>
             <div className="bg-muted rounded-xl p-4 text-center">
               <span className="text-2xl font-bold text-macro-protein">
-                {Math.round(meal.nutrition.protein * meal.servings)}g
+                {Math.round(meal.protein * meal.servings)}g
               </span>
               <p className="text-sm text-muted-foreground">Proteínas</p>
             </div>
             <div className="bg-muted rounded-xl p-4 text-center">
               <span className="text-2xl font-bold text-macro-fat">
-                {Math.round(meal.nutrition.fat * meal.servings)}g
+                {Math.round(meal.fat * meal.servings)}g
               </span>
               <p className="text-sm text-muted-foreground">Gorduras</p>
             </div>
             <div className="bg-muted rounded-xl p-4 text-center">
               <span className="text-2xl font-bold text-macro-fiber">
-                {Math.round(meal.nutrition.fiber * meal.servings)}g
+                {Math.round(meal.fiber * meal.servings)}g
               </span>
               <p className="text-sm text-muted-foreground">Fibras</p>
             </div>
