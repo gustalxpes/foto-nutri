@@ -12,6 +12,7 @@ import MealDetail from "./pages/MealDetail";
 import Profile from "./pages/Profile";
 import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
+import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import { useAuth } from "./hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -42,6 +43,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner position="top-center" />
+        <PWAInstallPrompt />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Home />} />
