@@ -7,9 +7,14 @@
     <meta name="description" content="Monitore sua alimentação com inteligência artificial. Tire uma foto da sua refeição e receba estimativas precisas de calorias e macronutrientes." />
     <meta name="author" content="NutriSnap" />
     <meta name="theme-color" content="#22C55E" />
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="NutriSnap" />
+    <meta name="mobile-web-app-capable" content="yes" />
 
     <meta property="og:title" content="NutriSnap - Controle Nutricional com IA" />
     <meta property="og:description" content="Monitore sua alimentação com inteligência artificial. Tire uma foto da sua refeição e receba estimativas precisas de calorias e macronutrientes." />
@@ -24,5 +29,14 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('NutriSnap SW registered:', reg.scope))
+            .catch(err => console.log('NutriSnap SW registration failed:', err));
+        });
+      }
+    </script>
   </body>
 </html>
