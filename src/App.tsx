@@ -4,8 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import Welcome from "./pages/Welcome";
-import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Capture from "./pages/Capture";
 import Analysis from "./pages/Analysis";
@@ -46,15 +44,10 @@ const App = () => (
         <Sonner position="top-center" />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Welcome />} />
-            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<Home />} />
             <Route
               path="/home"
-              element={
-                <ProtectedRoute>
-                  <Home />
-                </ProtectedRoute>
-              }
+              element={<Navigate to="/" replace />}
             />
             <Route
               path="/capture"

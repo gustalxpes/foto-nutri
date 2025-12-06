@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Flame, TrendingUp, Loader2, Settings, Sun, Moon } from 'lucide-react';
+import { Plus, Flame, TrendingUp, Loader2, Settings, Sun, Moon, Mail, Lock, User, Sparkles } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ProgressRing } from '@/components/ProgressRing';
 import { MacroCard } from '@/components/MacroCard';
 import { MealCard } from '@/components/MealCard';
@@ -37,6 +39,192 @@ interface MealData {
   fiber: number;
 }
 
+// Auth Form Component
+const AuthForm = () => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) {
+          if (error.message.includes('Invalid login credentials')) {
+            toast.error('Email ou senha incorretos');
+          } else {
+            toast.error(error.message);
+          }
+          return;
+        }
+
+        toast.success('Bem-vindo de volta!');
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/`,
+            data: {
+              name: name || email.split('@')[0],
+            },
+          },
+        });
+
+        if (error) {
+          if (error.message.includes('User already registered')) {
+            toast.error('Este email já está cadastrado');
+          } else {
+            toast.error(error.message);
+          }
+          return;
+        }
+
+        toast.success('Conta criada com sucesso!');
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+      toast.error('Ocorreu um erro. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen gradient-hero flex flex-col items-center justify-center px-6 py-12">
+      {/* Logo */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="mb-8"
+      >
+        <div className="w-20 h-20 rounded-2xl gradient-primary flex items-center justify-center shadow-glow">
+          <Sparkles className="w-10 h-10 text-primary-foreground" />
+        </div>
+      </motion.div>
+
+      <motion.h1
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="text-2xl font-bold font-display text-foreground mb-2"
+      >
+        {isLogin ? 'Entrar' : 'Criar Conta'}
+      </motion.h1>
+
+      <motion.p
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="text-muted-foreground mb-8"
+      >
+        {isLogin ? 'Continue sua jornada nutricional' : 'Comece a monitorar sua alimentação'}
+      </motion.p>
+
+      {/* Form */}
+      <motion.form
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm space-y-4"
+      >
+        {!isLogin && (
+          <div className="space-y-2">
+            <Label htmlFor="name" className="text-sm font-medium">
+              Nome
+            </Label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Input
+                id="name"
+                type="text"
+                placeholder="Seu nome"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="pl-11 h-12 rounded-xl bg-card border-border"
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-sm font-medium">
+            Email
+          </Label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <Input
+              id="email"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="pl-11 h-12 rounded-xl bg-card border-border"
+              required
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="password" className="text-sm font-medium">
+            Senha
+          </Label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="pl-11 h-12 rounded-xl bg-card border-border"
+              required
+              minLength={6}
+            />
+          </div>
+        </div>
+
+        <Button
+          type="submit"
+          variant="hero"
+          size="lg"
+          className="w-full mt-6"
+          disabled={isLoading}
+        >
+          {isLoading ? 'Carregando...' : isLogin ? 'Entrar' : 'Criar Conta'}
+        </Button>
+      </motion.form>
+
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        className="mt-6 text-sm text-muted-foreground"
+      >
+        {isLogin ? 'Não tem uma conta?' : 'Já tem uma conta?'}{' '}
+        <button
+          type="button"
+          onClick={() => setIsLogin(!isLogin)}
+          className="text-primary font-medium hover:underline"
+        >
+          {isLogin ? 'Criar conta' : 'Entrar'}
+        </button>
+      </motion.p>
+    </div>
+  );
+};
+
+// Main Home Component
 export const Home = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -47,12 +235,7 @@ export const Home = () => {
   const [showGoalsModal, setShowGoalsModal] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/login');
-      return;
-    }
-
-    if (user) {
+    if (!authLoading && user) {
       fetchData();
 
       // Real-time subscription for meals
@@ -93,8 +276,10 @@ export const Home = () => {
         supabase.removeChannel(mealsChannel);
         supabase.removeChannel(profileChannel);
       };
+    } else if (!authLoading && !user) {
+      setLoading(false);
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading]);
 
   const fetchData = async () => {
     if (!user) return;
@@ -163,6 +348,20 @@ export const Home = () => {
     toast.success('Metas atualizadas');
   };
 
+  // Show loading state
+  if (authLoading || (user && loading)) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Show auth form if not logged in
+  if (!user) {
+    return <AuthForm />;
+  }
+
   // Calculate today's totals
   const summary = todayMeals.reduce(
     (acc, meal) => ({
@@ -193,14 +392,6 @@ export const Home = () => {
     if (hour < 18) return 'Boa tarde';
     return 'Boa noite';
   };
-
-  if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
